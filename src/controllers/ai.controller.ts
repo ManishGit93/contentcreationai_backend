@@ -53,9 +53,25 @@ export const generateProposalAI = async (
       success: true,
       sections,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI Controller Error:', error);
-    next(error);
+    
+    // Determine appropriate status code based on error message
+    let statusCode = 500;
+    if (error.message?.includes('quota') || error.message?.includes('billing')) {
+      statusCode = 429; // Too Many Requests / Quota Exceeded
+    } else if (error.message?.includes('Rate limit')) {
+      statusCode = 429;
+    } else if (error.message?.includes('API key')) {
+      statusCode = 401; // Unauthorized
+    } else if (error.message?.includes('forbidden')) {
+      statusCode = 403; // Forbidden
+    }
+    
+    // Create a custom error with status code
+    const customError: any = new Error(error.message || 'Failed to generate proposal. Please try again.');
+    customError.statusCode = statusCode;
+    next(customError);
   }
 };
 

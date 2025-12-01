@@ -1,8 +1,17 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization - create client only when needed
+const getOpenAIClient = (): OpenAI => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is not defined in environment variables');
+  }
+
+  return new OpenAI({
+    apiKey,
+  });
+};
 
 interface GenerateProposalParams {
   clientName: string;
@@ -47,8 +56,9 @@ Please generate a comprehensive proposal with the following sections. Format you
 Make the proposal professional, clear, and tailored to the project. Use the specified tone throughout.`;
 
   try {
+    const openai = getOpenAIClient();
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-3.5-turbo', // Using gpt-3.5-turbo for better availability
       messages: [
         {
           role: 'system',
@@ -79,9 +89,30 @@ Make the proposal professional, clear, and tailored to the project. Use the spec
       pricing: proposalData.pricing || '',
       terms: proposalData.terms || '',
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI Service Error:', error);
-    throw new Error('Failed to generate proposal. Please try again.');
+    
+    // Handle OpenAI API errors with user-friendly messages
+    if (error.status === 429) {
+      const errorMessage = error.message || error.error?.message || '';
+      if (errorMessage.includes('quota') || errorMessage.includes('billing')) {
+        throw new Error('OpenAI API quota exceeded. Please check your OpenAI account billing and add credits to continue using the service.');
+      } else {
+        throw new Error('Rate limit exceeded. Please try again in a few moments.');
+      }
+    } else if (error.status === 401) {
+      throw new Error('Invalid OpenAI API key. Please check your API key configuration.');
+    } else if (error.status === 403) {
+      throw new Error('OpenAI API access forbidden. Please check your API key permissions.');
+    } else if (error.response) {
+      console.error('OpenAI API Error:', error.response.status, error.response.data);
+      const errorMessage = error.response.data?.error?.message || 'Unknown error';
+      throw new Error(`OpenAI API Error: ${errorMessage}`);
+    } else if (error.message) {
+      throw new Error(`AI Service Error: ${error.message}`);
+    } else {
+      throw new Error('Failed to generate proposal. Please try again.');
+    }
   }
 };
 
